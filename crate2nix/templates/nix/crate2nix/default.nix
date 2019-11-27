@@ -131,29 +131,25 @@ rec {
           combined;
     in builtins.toJSON { inherit onlyInCargo onlyInCrate2Nix differentFeatures; };
 
-  /* Returns the feature configuration by package id for the given input crate. */
-  mergePackageFeatures = {
-      crateConfigs ? crates, 
-      packageId, 
-      features, ...} @ args:
-    assert (builtins.isAttrs crateConfigs);
-    assert (builtins.isString packageId);
-    assert (builtins.isList features);
+  /* Returns the feature configuration by package id for the given input crate.
 
-    let packageFeatures = listOfPackageFeatures args;
-        grouped = lib.groupBy (x: x.packageId) packageFeatures;
-    in lib.mapAttrs (n: v: sortedUnique (builtins.concatLists (builtins.map (v: v.features) v))) grouped;
-
-  /* Returns a { packageId, features } attribute set for every package needed for building the
+     Returns a { packageId, features } attribute set for every package needed for building the
      package for the given packageId with the given features.
 
      Returns multiple, potentially conflicting attribute sets for dependencies that are reachable
      by multiple paths in the dependency tree.
   */
-  listOfPackageFeatures = {crateConfigs ? crates, packageId, features, dependencyPath? [packageId], ...} @ args:
+  mergePackageFeatures = {
+    crateConfigs ? crates,
+    packageId,
+    features,
+    dependencyPath? [packageId],
+    featuresByPackageId? {},
+    ...} @ args:
     assert (builtins.isAttrs crateConfigs);
     assert (builtins.isString packageId);
     assert (builtins.isList features);
+    assert (builtins.isAttrs featuresByPackageId);
 
     let
         crateConfig = crateConfigs."${packageId}" or (builtins.throw "Package not found: ${packageId}");
@@ -164,26 +160,35 @@ rec {
               features = dependencyFeatures expandedFeatures dependency;
           in { inherit packageId features; };
 
-        resolveDependencies = path: dependencies:
+        resolveDependencies = cache: path: dependencies:
           assert (builtins.isList dependencies);
 
           let enabledDependencies = filterEnabledDependencies dependencies expandedFeatures;
               directDependencies = map depWithResolvedFeatures enabledDependencies;
-          in builtins.concatMap
-            ({packageId, features}: listOfPackageFeatures {
-              # This is purely for debugging.
-              dependencyPath = dependencyPath ++ [path packageId];
-              inherit crateConfigs packageId features;
-            })
-             directDependencies;
+              foldOverCache = op: lib.foldl op cache directDependencies;
+          in foldOverCache
+            (cache: {packageId, features}:
+             let cacheFeatures = cache.${packageId} or [];
+                 combinedFeatures = sortedUnique (cacheFeatures ++ features);
+             in
+             if cache ? ${packageId} && cache.${packageId} == combinedFeatures
+             then cache
+             else cache //
+                mergePackageFeatures {
+                  # This is purely for debugging.
+                  dependencyPath = dependencyPath ++ [path packageId];
+                  features = combinedFeatures;
+                  inherit crateConfigs packageId cache;
+                 });
 
-        resolvedDependencies = builtins.concatLists
-          [
-            (resolveDependencies "dependencies" (crateConfig.dependencies or []))
-            (resolveDependencies "buildDependencies" (crateConfig.buildDependencies or []))
-          ];
+        cacheWithSelf = featuresByPackageId // { ${packageId} = expandedFeatures; };
 
-    in [{inherit packageId; features = expandedFeatures;}] ++ resolvedDependencies;
+        cacheWithDependencies =
+            resolveDependencies cacheWithSelf "dependencies" (crateConfig.dependencies or []);
+        cacheWithAll =
+            resolveDependencies cacheWithDependencies "buildDependencies" (crateConfig.buildDependencies or []);
+
+    in cacheWithAll;
 
   /* Returns the enabled dependencies given the enabled features. */
   filterEnabledDependencies = dependencies: features:
