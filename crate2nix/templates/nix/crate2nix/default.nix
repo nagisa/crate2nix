@@ -181,7 +181,10 @@ rec {
                   inherit crateConfigs packageId cache;
                  });
 
-        cacheWithSelf = featuresByPackageId // { ${packageId} = expandedFeatures; };
+        cacheWithSelf =
+            let cacheFeatures = featuresByPackageId.${packageId} or [];
+                combinedFeatures = sortedUnique (cacheFeatures ++ expandedFeatures);
+            in featuresByPackageId // { ${packageId} = combinedFeatures; };
 
         cacheWithDependencies =
             resolveDependencies cacheWithSelf "dependencies" (crateConfig.dependencies or []);
