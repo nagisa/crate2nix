@@ -71,6 +71,14 @@ pub enum Opt {
             help = "The path to the crate hash cache file. Uses 'crate-hashes.json' in the same directory as Cargo.toml by default."
         )]
         crate_hashes: Option<PathBuf>,
+
+        #[structopt(
+            short = "j",
+            long = "max-jobs",
+            default_value = "4",
+            help = "maximum concurrent fetch jobs"
+        )]
+        jobs: usize,
     },
 
     #[structopt(
@@ -108,6 +116,7 @@ fn main() -> CliResult {
             all_features,
             no_default_features,
             features,
+            jobs,
         } => {
             let crate_hashes_json = crate_hashes.unwrap_or_else(|| {
                 cargo_toml
@@ -147,6 +156,7 @@ fn main() -> CliResult {
                 nixpkgs_path,
                 crate_hashes_json,
                 other_metadata_options,
+                jobs,
             };
             let build_info = crate2nix::BuildInfo::for_config(&generate_info, &generate_config)?;
             let nix_string = render::render_build_file(&build_info)?;
