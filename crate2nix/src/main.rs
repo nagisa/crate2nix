@@ -73,12 +73,12 @@ pub enum Opt {
         crate_hashes: Option<PathBuf>,
 
         #[structopt(
-            short = "j",
-            long = "max-jobs",
+            short = "p",
+            long = "prefetch-parallelism",
             default_value = "4",
-            help = "maximum concurrent fetch jobs"
+            help = "maximum concurrent prefetch jobs"
         )]
-        jobs: usize,
+        prefetch_parallelism: usize,
     },
 
     #[structopt(
@@ -116,7 +116,7 @@ fn main() -> CliResult {
             all_features,
             no_default_features,
             features,
-            jobs,
+            prefetch_parallelism,
         } => {
             let crate_hashes_json = crate_hashes.unwrap_or_else(|| {
                 cargo_toml
@@ -156,7 +156,7 @@ fn main() -> CliResult {
                 nixpkgs_path,
                 crate_hashes_json,
                 other_metadata_options,
-                jobs,
+                prefetch_parallelism,
             };
             let build_info = crate2nix::BuildInfo::for_config(&generate_info, &generate_config)?;
             let nix_string = render::render_build_file(&build_info)?;
